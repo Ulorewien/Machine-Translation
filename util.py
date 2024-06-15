@@ -34,3 +34,78 @@ class PositionalEncoding(nn.Module):
     def forward(self, x):
         x = x + (self.positional_embedding[:, :x.shape[1], :]).requires_grad_(False)
         return self.dropout(x)
+
+class LayerNormalization(nn.Module):
+    def __init__(self, eps=10e-6):
+        super().__init__()
+        self.eps = eps
+        self.alpha = nn.Parameter(torch.ones(1))
+        self.bias = nn.Parameter(torch.zeros(1))
+
+    def forward(self, x):
+        mean = x.mean(dim=-1, keepdim=True)
+        std = x.std(dim=-1, keepdim=True)
+        return (self.alpha * (x - mean) / (std + self.eps)) + self.bias
+    
+class FeedForward(nn.Module):
+    def __init__(self, d_model, d_ff, dropout=0.5):
+        super().__init__()
+        self.linear1 = nn.Linear(d_model, d_ff)
+        self.relu = nn.ReLU()
+        self.dropout = nn.Dropout(dropout)
+        self.linear2 = nn.Linear(d_ff, d_model)
+
+    def forward(self, x):
+        x = self.linear1(x)
+        x = self.relu(x)
+        x = self.dropout(x)
+        x = self.linear2(x)
+        return x
+    
+class MultiHeadAttention(nn.Module):
+    def __init__(self, d_model, num_heads, dropout=0.5):
+        super().__init__()
+        assert d_model % num_heads == 0, "The embedding dimension should be divisible by the number of heads"
+
+        self.d_model = d_model
+        self.num_heads = num_heads
+        self.d_per_head = d_model // num_heads
+
+        self.query = nn.Linear(d_model, d_model)
+        self.key = nn.Linear(d_model, d_model)
+        self.value = nn.Linear(d_model, d_model)
+        self.projection = nn.Linear(d_model, d_model)
+        self.dropout = nn.Dropout(dropout)
+
+    @staticmethod
+    def calculate_attention(q, k, v, mask=None, dropout_layer=None):
+        d_per_head = q.shape[-1]
+
+        attention_scores = q @ k.transpose(-2, -1)
+        attention_scores = attention_scores * (d_per_head**(-0.5))
+
+        if mask is not None:
+            attention_scores.masked_fill_(mask == 0, "-inf")
+        
+        attention_scores = attention_scores.softmax(dim=-1)
+        if dropout_layer is not None:
+            attention_scores = dropout_layer(attention_scores)
+
+        ouptut = attention_scores @ v
+
+        return ouptut, attention_scores
+
+    def forward(self, q, k, v, mask):
+        query = self.query(q)
+        key = self.key(k)
+        value = self.value(v)
+
+        query = query.view(query.shape[0], query.shape[1], self.num_heads, self.d_per_head).transpose(1, 2)
+        key = key.view(key.shape[0], key.shape[1], self.num_heads, self.d_per_head).transpose(1, 2)
+        value = value.view(value.shape[0], value.shape[1], self.num_heads, self.d_per_head).transpose(1, 2)
+
+        x, self.attention_scores = MultiHeadAttention.calculate_attention(query, key, value, mask, self.dropout)
+        x = x.transpose(1, 2).contiguous().view(x.shape[0], -1, self.num_heads * self.d_per_head)
+        x = self.projection(x)
+
+        return x
