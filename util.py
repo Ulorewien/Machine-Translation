@@ -1,7 +1,6 @@
 import math
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 class InputEmbedding(nn.Module):
     def __init__(self, d_model, vocab_size):
@@ -116,7 +115,17 @@ class ResidualBlock(nn.Module):
         self.dropout = nn.Dropout(dropout)
         self.layernorm = LayerNormalization()
 
-    def forward(self, x, sublayer):
-        return x + self.dropout(sublayer(self.norm(x)))
-    
+    def forward(self, x, layer):
+        return x + self.dropout(layer(self.layernorm(x)))
 
+class EncoderBlock(nn.Module):
+    def __init__(self, self_attention_block, feed_forward_block, dropout=0.5):
+        super().__init__()
+        self.self_attention_block = self_attention_block
+        self.feed_forward_block = feed_forward_block
+        self.residual_block = nn.ModuleList([ResidualBlock(dropout) for _ in range(2)])
+
+    def forward(self, x, source_mask):
+        x = self.residual_block[0](x, lambda x: self.self_attention_block(x, x, x, source_mask))
+        x = self.residual_block[1](x, self.feed_forward_block(x))
+        return x
