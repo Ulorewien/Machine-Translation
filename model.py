@@ -50,7 +50,7 @@ class Transformer(nn.Module):
     def project(self, x):
         return self.projection_layer(x)
     
-def buildTransformer(source_vocab_size, target_vocab_size, source_seq_len, target_seq_len, d_model=512, n_layer=6, n_heads=8, dropout=0.5, d_ff=2048):
+def build_transformer(source_vocab_size, target_vocab_size, source_seq_len, target_seq_len, d_model=512, n_layer=6, n_heads=8, dropout=0.5, d_ff=2048):
     source_embd = InputEmbedding(d_model, source_vocab_size)
     target_embd = InputEmbedding(d_model, target_vocab_size)
 
