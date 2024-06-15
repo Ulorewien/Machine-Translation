@@ -109,3 +109,14 @@ class MultiHeadAttention(nn.Module):
         x = self.projection(x)
 
         return x
+    
+class ResidualBlock(nn.Module):
+    def __init__(self, dropout=0.5):
+        super().__init__()
+        self.dropout = nn.Dropout(dropout)
+        self.layernorm = LayerNormalization()
+
+    def forward(self, x, sublayer):
+        return x + self.dropout(sublayer(self.norm(x)))
+    
+
