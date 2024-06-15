@@ -129,3 +129,17 @@ class EncoderBlock(nn.Module):
         x = self.residual_block[0](x, lambda x: self.self_attention_block(x, x, x, source_mask))
         x = self.residual_block[1](x, self.feed_forward_block(x))
         return x
+
+class DecoderBlock(nn.Module):
+    def __init__(self, self_attention, cross_attention, feed_forward, dropout=0.5):
+        super().__init__()
+        self.self_attention = self_attention
+        self.cross_attention = cross_attention
+        self.feed_forward = feed_forward
+        self.residual_connection = nn.Module([ResidualBlock(dropout) for _ in range(3)])
+
+    def forward(self, x, encoder_output, source_mask, target_mask):
+        x = self.residual_connection[0](x, lambda x: self.self_attention(x, x, x, target_mask))
+        x = self.residual_connection[1](x, lambda x: self.cross_attention(x, encoder_output, encoder_output, source_mask))
+        x = self.residual_connection[2](x, self.feed_forward)
+        return x
