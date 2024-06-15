@@ -143,3 +143,13 @@ class DecoderBlock(nn.Module):
         x = self.residual_connection[1](x, lambda x: self.cross_attention(x, encoder_output, encoder_output, source_mask))
         x = self.residual_connection[2](x, self.feed_forward)
         return x
+
+class ProjectionLayer(nn.Module):
+    def __init__(self, d_model, vocab_size):
+        super().__init__()
+        self.projection = nn.Linear(d_model, vocab_size)
+
+    def forward(self, x):
+        x = self.projection(x)
+        x = torch.log_softmax(x, dim=-1)
+        return x
