@@ -38,7 +38,7 @@ def get_tokenizer(config, dataset, language):
     return tokenizer
 
 def get_dataset(config):
-    dataset_raw = load_dataset("opus_books", f"{config["language_source"]}-{config["language_target"]}", split="train")
+    dataset_raw = load_dataset("Helsinki-NLP/opus_books", f"{config["language_source"]}-{config["language_target"]}", split="train")
 
     tokenizer_source = get_tokenizer(config, dataset_raw, config["language_source"])
     tokenizer_target = get_tokenizer(config, dataset_raw, config["language_target"])
@@ -53,7 +53,8 @@ def get_dataset(config):
     max_len_source = 0
     max_len_target = 0
 
-    for item in dataset_raw:
+    for i, item in enumerate(dataset_raw):
+        # print(i)
         source_ids = tokenizer_source.encode(item["translation"][config["language_source"]]).ids
         target_ids = tokenizer_target.encode(item["translation"][config["language_target"]]).ids
         max_len_source = max(max_len_source, len(source_ids))
@@ -62,7 +63,7 @@ def get_dataset(config):
     print(f"Maximum length of source sentence: {max_len_source}")
     print(f"Maximum length of target sentence: {max_len_target}")
 
-    train_loader = DataLoader(train_dataset, batch_size=config["bacth_size"], shuffle=True)
+    train_loader = DataLoader(train_dataset, batch_size=config["batch_size"], shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size=1, shuffle=True)
 
     return train_loader, val_loader, tokenizer_source, tokenizer_target
@@ -75,7 +76,7 @@ def train_model(config):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device {device}")
 
-    Path(config["model_folder"].mkdir(parents=True, exist_ok=True))
+    Path(config["model_folder"]).mkdir(parents=True, exist_ok=True)
 
     train_loader, val_loader, tokenizer_source, tokenizer_target = get_dataset(config)
     model = get_model(config, tokenizer_source.get_vocab_size(), tokenizer_target.get_vocab_size()).to(device)
@@ -131,6 +132,6 @@ def train_model(config):
             "global_step": global_step,
         }, model_filename)
 
-if __name__ == "main":
+if __name__ == "__main__":
     config = get_config()
     train_model(config)

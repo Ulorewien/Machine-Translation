@@ -12,9 +12,9 @@ class OPUSBooksDataset(Dataset):
         self.target_language = target_language
         self.seq_len = seq_len
 
-        self.start_token = torch.Tensor([source_tokenizer.token_to_id(["[SOS]"])], dtype=torch.int64)
-        self.end_token = torch.Tensor([source_tokenizer.token_to_id(["[EOS]"])], dtype=torch.int64)
-        self.pad_token = torch.Tensor([source_tokenizer.token_to_id(["[PAD]"])], dtype=torch.int64)
+        self.start_token = torch.tensor([source_tokenizer.token_to_id("[SOS]")], dtype=torch.int64)
+        self.end_token = torch.tensor([source_tokenizer.token_to_id("[EOS]")], dtype=torch.int64)
+        self.pad_token = torch.tensor([source_tokenizer.token_to_id("[PAD]")], dtype=torch.int64)
 
     def __len__(self):
         return len(self.dataset)
