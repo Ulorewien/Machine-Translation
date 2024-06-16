@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader, random_split
+from torch.utils.tensorboard import SummaryWriter
 
 from datasets import load_dataset
 from tokenizers import Tokenizer
@@ -9,6 +10,15 @@ from tokenizers.trainers import WordLevelTrainer
 from tokenizers.pre_tokenizers import Whitespace
 
 from pathlib import Path
+from tqdm import tqdm
+
+from dataset import OPUSBooksDataset
+from model import build_transformer
+from config import get_config
+from util import get_weights_file_path
+
+import warnings
+warnings.filterwarnings("ignore")
 
 def get_all_sentences(dataset, language):
     for item in dataset:
@@ -36,3 +46,91 @@ def get_dataset(config):
     train_size = int(0.9 * len(dataset_raw))
     val_size = len(dataset_raw) - train_size
     train_dataset_raw, val_dataset_raw = random_split(dataset_raw, [train_size, val_size])
+
+    train_dataset = OPUSBooksDataset(train_dataset_raw, tokenizer_source, tokenizer_target, config["language_source"], config["language_target"], config["seq_len"])
+    val_dataset = OPUSBooksDataset(val_dataset_raw, tokenizer_source, tokenizer_target, config["language_source"], config["language_target"], config["seq_len"])
+    
+    max_len_source = 0
+    max_len_target = 0
+
+    for item in dataset_raw:
+        source_ids = tokenizer_source.encode(item["translation"][config["language_source"]]).ids
+        target_ids = tokenizer_target.encode(item["translation"][config["language_target"]]).ids
+        max_len_source = max(max_len_source, len(source_ids))
+        max_len_target = max(max_len_target, len(target_ids))
+
+    print(f"Maximum length of source sentence: {max_len_source}")
+    print(f"Maximum length of target sentence: {max_len_target}")
+
+    train_loader = DataLoader(train_dataset, batch_size=config["bacth_size"], shuffle=True)
+    val_loader = DataLoader(val_dataset, batch_size=1, shuffle=True)
+
+    return train_loader, val_loader, tokenizer_source, tokenizer_target
+
+def get_model(config, source_vocab_size, target_vocab_size):
+    model = build_transformer(source_vocab_size, target_vocab_size, config["seq_len"], config["seq_len"], config["d_model"], config["n_layer"], config["n_heads"], config["dropout"], config["d_ff"])
+    return model
+
+def train_model(config):
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Using device {device}")
+
+    Path(config["model_folder"].mkdir(parents=True, exist_ok=True))
+
+    train_loader, val_loader, tokenizer_source, tokenizer_target = get_dataset(config)
+    model = get_model(config, tokenizer_source.get_vocab_size(), tokenizer_target.get_vocab_size()).to(device)
+
+    writer = SummaryWriter(config["experiment_name"])
+
+    optimizer = torch.optim.Adam(model.parameters(), lr=config["lr"], eps=1e-9)
+
+    initial_epoch = 0
+    global_step = 0
+    if config["preload"]:
+        model_filename = get_weights_file_path(config, config["preload"])
+        print(f"Preloading model {model_filename}")
+        state = torch.load(model_filename)
+        initial_epoch = state["epoch"] + 1
+        optimizer.load_state_dict(state["optimizer_state_dict"])
+        global_step = state["global_step"]
+
+    loss_function = nn.CrossEntropyLoss(ignore_index=tokenizer_source.token_to_id("[PAD]"), label_smoothing=0.1).to(device)
+
+    for epoch in range(initial_epoch, config["n_epochs"]):
+        model.train()
+        batch_iterator = tqdm(train_loader, desc=f"Processing epoch {epoch:02d}")
+        for batch in batch_iterator:
+            encoder_input = batch["encoder_input"].to(device)
+            decoder_input = batch["decoder_input"].to(device)
+            encoder_mask = batch["encoder_mask"].to(device)
+            decoder_mask = batch["decoder_mask"].to(device)
+
+            encoder_output = model.encode(encoder_input, encoder_mask)
+            decoder_output = model.decode(encoder_output, encoder_mask, decoder_input, decoder_mask)
+            projection_output = model.project(decoder_output)
+
+            label = batch["label"].to(device)
+
+            loss = loss_function(projection_output.view(-1, tokenizer_target.get_vocab_size()), label.view(-1))
+            batch_iterator.set_postfix({f"loss": f"{loss.item():6.3f}"})
+
+            writer.add_scalar("train loss", loss.item(), global_step)
+            writer.flush()
+
+            loss.backward()
+            optimizer.step()
+            optimizer.zero_grad()
+
+            global_step += 1
+
+        model_filename = get_weights_file_path(config, f"{epoch:02d}")
+        torch.save({
+            "epcoh": epoch,
+            "model_state_dict": model.state_dict(),
+            "optimizer_state_dict": optimizer.state_dict(),
+            "global_step": global_step,
+        }, model_filename)
+
+if __name__ == "main":
+    config = get_config()
+    train_model(config)
