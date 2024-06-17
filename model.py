@@ -38,7 +38,7 @@ class Transformer(nn.Module):
     def encode(self, x, source_mask):
         x = self.source_embd(x)
         x = self.source_pos(x)
-        x = self.encoder(x)
+        x = self.encoder(x, source_mask)
         return x
     
     def decode(self, encoder_output, source_mask, x, target_mask):

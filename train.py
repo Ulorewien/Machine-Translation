@@ -38,20 +38,27 @@ def get_tokenizer(config, dataset, language):
     return tokenizer
 
 def get_dataset(config):
+    # print("a")
     dataset_raw = load_dataset("Helsinki-NLP/opus_books", f"{config["language_source"]}-{config["language_target"]}", split="train")
+    # print("b")
 
     tokenizer_source = get_tokenizer(config, dataset_raw, config["language_source"])
     tokenizer_target = get_tokenizer(config, dataset_raw, config["language_target"])
+    # print("c")
 
     train_size = int(0.9 * len(dataset_raw))
     val_size = len(dataset_raw) - train_size
     train_dataset_raw, val_dataset_raw = random_split(dataset_raw, [train_size, val_size])
+    # print("d")
 
     train_dataset = OPUSBooksDataset(train_dataset_raw, tokenizer_source, tokenizer_target, config["language_source"], config["language_target"], config["seq_len"])
     val_dataset = OPUSBooksDataset(val_dataset_raw, tokenizer_source, tokenizer_target, config["language_source"], config["language_target"], config["seq_len"])
+    # print("e")
     
     max_len_source = 0
     max_len_target = 0
+
+    # print(len(dataset_raw))
 
     for i, item in enumerate(dataset_raw):
         # print(i)

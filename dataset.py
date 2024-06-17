@@ -27,8 +27,8 @@ class OPUSBooksDataset(Dataset):
         encoder_input_tokens = self.source_tokenizer.encode(source_text).ids
         decoder_input_tokens = self.target_tokenizer.encode(target_text).ids
 
-        encoder_num_padding = self.seq_len - len(encoder_input_tokens)
-        decoder_num_padding = self.seq_len - len(decoder_input_tokens)
+        encoder_num_padding = self.seq_len - len(encoder_input_tokens) - 2
+        decoder_num_padding = self.seq_len - len(decoder_input_tokens) - 1
 
         if encoder_num_padding < 0 or decoder_num_padding < 0:
             raise ValueError("Sentence is too long.")
@@ -38,19 +38,21 @@ class OPUSBooksDataset(Dataset):
             torch.tensor(encoder_input_tokens, dtype=torch.int64),
             self.end_token,
             torch.tensor([self.pad_token] * encoder_num_padding, dtype=torch.int64),
-        ])
+        ], dim=0)
 
         decoder_input = torch.cat([
             self.start_token,
             torch.tensor(decoder_input_tokens, dtype=torch.int64),
             torch.tensor([self.pad_token] * decoder_num_padding, dtype=torch.int64),
-        ])
+        ], dim=0)
 
         label = torch.cat([
             torch.tensor(decoder_input_tokens, dtype=torch.int64),
             self.end_token,
             torch.tensor([self.pad_token] * decoder_num_padding, dtype=torch.int64),
-        ])
+        ], dim=0)
+
+        # print(encoder_input.size(0), decoder_input.size(0), label.size(0), self.seq_len)
 
         assert encoder_input.size(0) == self.seq_len
         assert decoder_input.size(0) == self.seq_len
