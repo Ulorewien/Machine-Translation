@@ -85,7 +85,7 @@ class MultiHeadAttention(nn.Module):
         attention_scores = attention_scores * (d_per_head**(-0.5))
 
         if mask is not None:
-            attention_scores.masked_fill_(mask == 0, "-inf")
+            attention_scores.masked_fill_(mask == 0, -1e9)
         
         attention_scores = attention_scores.softmax(dim=-1)
         if dropout_layer is not None:
