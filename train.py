@@ -12,13 +12,71 @@ from tokenizers.pre_tokenizers import Whitespace
 from pathlib import Path
 from tqdm import tqdm
 
-from dataset import OPUSBooksDataset
+from dataset import OPUSBooksDataset, causal_mask
 from model import build_transformer
 from config import get_config
 from util import get_weights_file_path
 
 import warnings
 warnings.filterwarnings("ignore")
+
+def greedy_decode(model, encoder, encoder_mask, tokenizer_source, tokenizer_target, max_len, device):
+    start_id = tokenizer_target.token_to_id("[SOS]")
+    end_id = tokenizer_target.token_to_id("[EOS]")
+
+    encoder_output = model.encode(encoder, encoder_mask)
+    decoder_input = torch.empty(1, 1).fill_(start_id).type_as(encoder).to(device)
+
+    while(True):
+        if decoder_input.size(1) == max_len:
+            break
+
+        decoder_mask = causal_mask(decoder_input.size(1)).type_as(encoder_mask).to(device)
+        out = model.decode(encoder_output, encoder_mask, decoder_input, decoder_mask)
+        probs = model.project(out[:,-1])
+        _, next_word = torch.max(probs, dim=1)
+        decoder_input = torch.cat([decoder_input, torch.empty(1, 1).type_as(encoder).fill_(next_word.item()).to(device)], dim=1)
+
+        if next_word == end_id:
+            break
+    
+    return decoder_input.squeeze(0)
+
+def run_validation(model, val_dataset, tokenizer_source, tokenizer_target, max_len, device, print_msg, global_state, writer, num_examples=2):
+    model.eval()
+    ct = 0
+    console_width = 80
+
+    source_texts = []
+    expected = []
+    predicted = []
+
+    with torch.no_grad():
+        for batch in val_dataset:
+            ct += 1
+            encoder_input = batch["encoder_input"].to(device)
+            encoder_mask = batch["encoder_mask"].to(device)
+
+            assert encoder_input.size(0) == 1, "Batch size must be 1"
+
+            model_out = greedy_decode(model, encoder_input, encoder_mask, tokenizer_source, tokenizer_target, max_len, device)
+
+            source_text = batch["source_text"][0]
+            target_text = batch["target_text"][0]
+            model_out_text = tokenizer_target.decode(model_out.detach().cpu().numpy())
+            source_texts.append(source_text)
+            expected.append(target_text)
+            predicted.append(model_out_text)
+
+            print_msg("-"*console_width)
+            print_msg(f"SOURCE: {source_text}")
+            print_msg(f"TARGET: {target_text}")
+            print_msg(f"PREDICTED: {model_out_text}")
+
+            if ct == num_examples:
+                break
+
+    # if writer:
 
 def get_all_sentences(dataset, language):
     for item in dataset:
@@ -130,6 +188,8 @@ def train_model(config):
             optimizer.zero_grad()
 
             global_step += 1
+
+        run_validation(model, val_loader, tokenizer_source, tokenizer_target, config["seq_len"], device, lambda x: batch_iterator.write(x), global_step, writer)
 
         model_filename = get_weights_file_path(config, f"{epoch:02d}")
         torch.save({
