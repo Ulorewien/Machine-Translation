@@ -128,7 +128,7 @@ class EncoderBlock(nn.Module):
 
     def forward(self, x, source_mask):
         x = self.residual_block[0](x, lambda x: self.self_attention_block(x, x, x, source_mask))
-        x = self.residual_block[1](x, self.feed_forward_block(x))
+        x = self.residual_block[1](x, self.feed_forward_block)
         return x
 
 class DecoderBlock(nn.Module):
