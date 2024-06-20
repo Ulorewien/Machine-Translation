@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader, random_split
 from torch.utils.tensorboard import SummaryWriter
+import torchmetrics
 
 from datasets import load_dataset
 from tokenizers import Tokenizer
@@ -15,7 +16,7 @@ from tqdm import tqdm
 from dataset import OPUSBooksDataset, causal_mask
 from model import build_transformer
 from config import get_config
-from util import get_weights_file_path
+from util import get_weights_file_path, plot_loss, plot_metric
 
 import warnings
 warnings.filterwarnings("ignore")
@@ -42,7 +43,7 @@ def greedy_decode(model, encoder, encoder_mask, tokenizer_source, tokenizer_targ
     
     return decoder_input.squeeze(0)
 
-def run_validation(model, val_dataset, tokenizer_source, tokenizer_target, max_len, device, print_msg, global_state, writer, num_examples=2):
+def run_validation(model, val_dataset, tokenizer_source, tokenizer_target, max_len, device, print_msg, global_step, writer, num_examples=2):
     model.eval()
     ct = 0
     console_width = 80
@@ -76,7 +77,23 @@ def run_validation(model, val_dataset, tokenizer_source, tokenizer_target, max_l
             if ct == num_examples:
                 break
 
-    # if writer:
+    if writer:
+        metric = torchmetrics.CharErrorRate()
+        cer = metric(predicted, expected)
+        writer.add_scalar("validation cer", cer, global_step)
+        writer.flush()
+
+        metric = torchmetrics.WordErrorRate()
+        wer = metric(predicted, expected)
+        writer.add_scalar("validation wer", wer, global_step)
+        writer.flush()
+
+        metric = torchmetrics.BLEUScore()
+        bleu = metric(predicted, expected)
+        writer.add_scalar("validation BLEU", bleu, global_step)
+        writer.flush()
+
+    return cer, wer, bleu
 
 def get_all_sentences(dataset, language):
     for item in dataset:
@@ -162,9 +179,15 @@ def train_model(config):
 
     loss_function = nn.CrossEntropyLoss(ignore_index=tokenizer_source.token_to_id("[PAD]"), label_smoothing=0.1).to(device)
 
+    losses = []
+    char_error_rates = []
+    word_error_rates = []
+    bleu_scores = []
+
     for epoch in range(initial_epoch, config["n_epochs"]):
         model.train()
         batch_iterator = tqdm(train_loader, desc=f"Processing epoch {epoch:02d}")
+        epoch_loss = []
         for batch in batch_iterator:
             encoder_input = batch["encoder_input"].to(device)
             decoder_input = batch["decoder_input"].to(device)
@@ -188,8 +211,16 @@ def train_model(config):
             optimizer.zero_grad()
 
             global_step += 1
-
-        run_validation(model, val_loader, tokenizer_source, tokenizer_target, config["seq_len"], device, lambda x: batch_iterator.write(x), global_step, writer)
+            
+            epoch_loss.append(loss.item())
+        
+        losses.append(sum(epoch_loss)/len(epoch_loss))
+        
+        cer, wer, bleu = run_validation(model, val_loader, tokenizer_source, tokenizer_target, config["seq_len"], device, lambda x: batch_iterator.write(x), global_step, writer)
+        
+        char_error_rates.append(cer)
+        word_error_rates.append(wer)
+        bleu_scores.append(bleu)
 
         model_filename = get_weights_file_path(config, f"{epoch:02d}")
         torch.save({
@@ -198,6 +229,11 @@ def train_model(config):
             "optimizer_state_dict": optimizer.state_dict(),
             "global_step": global_step,
         }, model_filename)
+
+    plot_loss(losses, "Transformer Training Loss", "transformer_loss.png")
+    plot_metric(char_error_rates, "Character Error Rate (CER)", "transformer_cer.png")
+    plot_metric(word_error_rates, "Word Error Rate (WER)", "transformer_wer.png")
+    plot_metric(bleu_scores, "BLEU Score", "transformer_bleu.png")
 
 if __name__ == "__main__":
     config = get_config()
