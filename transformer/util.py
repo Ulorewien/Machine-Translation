@@ -2,6 +2,7 @@ import math
 import torch
 import torch.nn as nn
 from pathlib import Path
+import matplotlib.pyplot as plt
 
 class InputEmbedding(nn.Module):
     def __init__(self, d_model, vocab_size):
@@ -160,3 +161,37 @@ def get_weights_file_path(config, epoch):
     model_basename = config["model_basename"]
     model_filename = f"{model_basename}{epoch}.pt"
     return str(Path(".") / model_folder / model_filename)
+
+def plot_loss(losses, title, save_path=None):
+    epochs = range(1, len(losses) + 1)
+    
+    plt.figure(figsize=(10, 6))
+    plt.plot(epochs, losses)
+    
+    plt.xlabel("Epochs")
+    plt.ylabel("Training Loss")
+    plt.title(title)
+    plt.grid(True)
+
+    if save_path is not None:
+        plt.savefig(save_path)
+
+    plt.show()
+
+def plot_metric(metric_values, metric_name, save_path):
+    epochs = range(1, len(metric_values) + 1)
+
+    plt.figure(figsize=(10, 5))
+    plt.plot(metric_values, epochs, marker="o", linestyle="-", color="b")
+
+    plt.title(f"{metric_name} Over Epochs")
+    plt.xlabel("Epoch")
+    plt.ylabel(metric_name)
+
+    plt.grid(True)
+    plt.tight_layout()
+
+    if save_path is not None:
+        plt.savefig(save_path)
+
+    plt.show()
