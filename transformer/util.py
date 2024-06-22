@@ -182,7 +182,7 @@ def plot_metric(metric_values, metric_name, save_path):
     epochs = range(1, len(metric_values) + 1)
 
     plt.figure(figsize=(10, 5))
-    plt.plot(metric_values, epochs, marker="o", linestyle="-", color="b")
+    plt.plot(epochs, metric_values, marker="o", linestyle="-", color="b")
 
     plt.title(f"{metric_name} Over Epochs")
     plt.xlabel("Epoch")
